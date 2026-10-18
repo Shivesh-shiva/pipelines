@@ -1,0 +1,23 @@
+pool: shivesh_agent
+
+trigger: 
+- main
+- feature/*
+
+stages:
+- stage: BuildAndPush
+  displayName: Build And Push To ACR
+  jobs: 
+  - job: BuildAndPushJob
+    displayName: Image Build And Push
+    steps:
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'ACR'
+        command: 'login'
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'ACR'
+        repository: 'axion-ingestion-service'
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'

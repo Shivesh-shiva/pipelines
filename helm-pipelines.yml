@@ -1,0 +1,101 @@
+pool: shivesh_agent
+
+trigger: none
+#- main
+#- feature/*
+
+stages:
+- stage: BuildAndPush
+  displayName: Build And Push To ACR
+  jobs: 
+  - job: BuildAndPushJob
+    displayName: Image Build And Push
+    steps:
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'shivesh-acr'
+        command: 'login'
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'shivesh-acr'
+        repository: 'axion-ui'
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'
+        tags: '$(Build.BuildId)-latest'
+
+- stage: DeploytodevusingHelm
+  displayName: DEV HELM Deploy 
+  dependsOn: BuildAndPush
+  #condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - job: DeploytodevusingHelm
+    displayName: HELM Deploy to DEV
+    steps:
+    - task: HelmInstaller@1
+      inputs:
+        helmVersionToInstall: 'latest'
+    
+    - task: HelmDeploy@1
+      displayName: Helm Upgrade/Install to DEV
+      inputs:
+        connectionType: 'Kubernetes Service Connection'
+        kubernetesServiceConnection: 'shivesh-aks'
+        namespace: 'app-dev'
+        command: 'upgrade'
+        chartType: 'FilePath'
+        chartPath: '$(Build.SourcesDirectory)/shivesh-chart'
+        releaseName: 'axion-dev-pipeline'
+        valueFile: '$(Build.SourcesDirectory)/shivesh-chart/dev-values.yaml'
+        install: true
+        waitForExecution: true
+
+    - task: HelmDeploy@1
+      displayName: helm list
+      inputs:
+        connectionType: 'Kubernetes Service Connection'
+        kubernetesServiceConnection: 'shivesh-aks'
+        namespace: 'app-dev'
+        command: 'ls'
+
+- stage: Approval
+  pool: server
+  displayName: Manual Approval 
+  jobs:
+  - job: approval
+    displayName: Approval
+    steps:
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'abc@abc.com'
+
+- stage: DeploytoprodusingHelm
+  displayName: PROD HELM Deploy
+  dependsOn: Approval
+  jobs:
+  - job: DeploytoprodusingHelm
+    displayName: HELM Deploy to PROD
+    steps:
+    - task: HelmInstaller@1
+      inputs:
+        helmVersionToInstall: 'latest'
+    - task: HelmDeploy@1
+      displayName: Helm Upgrade/Install to PROD
+      inputs:
+        connectionType: 'Kubernetes Service Connection'
+        kubernetesServiceConnection: 'shivesh-aks'
+        namespace: 'app-prod'
+        command: 'upgrade'
+        chartType: 'FilePath'
+        chartPath: '$(Build.SourcesDirectory)/shivesh-chart'
+        releaseName: 'axion-prod-pipeline'
+        valueFile: '$(Build.SourcesDirectory)/shivesh-chart/prod-values.yaml'
+        install: true
+        waitForExecution: true
+
+    - task: HelmDeploy@1
+      displayName: helm list
+      inputs:
+        connectionType: 'Kubernetes Service Connection'
+        kubernetesServiceConnection: 'shivesh-aks'
+        namespace: 'app-prod'
+        command: 'ls'

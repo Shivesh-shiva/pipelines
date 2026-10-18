@@ -1,0 +1,168 @@
+pool: shivesh_agent
+
+trigger:
+- main
+- feature/*
+
+parameters:
+- name: TfsecScan
+  displayName: Tfsec scan cholbe? 
+  type: boolean
+  default: true
+
+- name: TflintScan
+  displayName: Tflint scan cholbe? 
+  type: boolean
+  default: true
+
+- name: CheckovScan
+  displayName: Checkov scan cholbe? 
+  type: boolean
+  default: true
+
+- name: Validate
+  displayName: Validate cholbe? 
+  type: boolean
+  default: true
+
+- name: plan
+  displayName: plan cholbe? 
+  type: boolean
+  default: false
+
+- name: apply
+  displayName: apply cholbe? 
+  type: boolean
+  default: false
+
+stages: 
+- stage: tfsecscan
+  condition: ${{ parameters.TfsecScan }}
+  dependsOn: []
+  displayName: tfsec scan  
+  jobs:
+  - job: tfsec
+    displayName: tfsec scan 
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: 'tfsec $(System.DefaultWorkingDirectory)/environments/dev --tfvars-file $(System.DefaultWorkingDirectory)/environments/dev/terraform.tfvars'
+
+- stage: tflint
+  displayName: tflint scan 
+  condition: ${{ parameters.TflintScan }} 
+  dependsOn: []
+  jobs:
+  - job: tflint
+    displayName: tflint scan 
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: 'tflint --recursive --force'
+
+- stage: checkovscan
+  displayName: checkov scan 
+  condition: ${{ parameters.CheckovScan }} 
+  dependsOn: []
+  jobs:
+  - job: checkov
+    displayName: checkov scan 
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: 'checkov -d $(System.DefaultWorkingDirectory)/environments/dev --framework terraform --compact'
+
+- stage: Validate
+  displayName: Validate 
+  condition: ${{ parameters.Validate }}
+  dependsOn: []
+  jobs:
+  - job: Validate
+    displayName: Validate
+    steps: 
+    - task: TerraformTask@5
+      displayName: Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+        backendServiceArm: 'shivesh-svc'
+        backendAzureRmStorageAccountName: '1devopsinsidersstorage1'
+        backendAzureRmContainerName: 'tfstate'
+        backendAzureRmKey: 'sumant.tfstate'
+    - task: TerraformTask@5
+      displayName: Validate
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+
+- stage: Plan
+  displayName: Plan 
+  condition: ${{ parameters.plan }}
+  dependsOn:
+  - tfsecscan
+  - tflint
+  - checkovscan
+  - Validate
+  jobs:
+  - job: Plan
+    displayName: Plan
+    steps: 
+    - task: TerraformTask@5
+      displayName: Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+        backendServiceArm: 'shivesh-svc'
+        backendAzureRmStorageAccountName: '1devopsinsidersstorage1'
+        backendAzureRmContainerName: 'tfstate'
+        backendAzureRmKey: 'sumant.tfstate'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+        environmentServiceNameAzureRM: 'shivesh-svc'
+
+- stage: Approval
+  pool: server
+  displayName: Approval
+  condition: and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), ${{ parameters.apply }})
+  dependsOn: Plan
+  jobs:
+  - job: Approval
+    displayName: Approval
+    steps: 
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'abv@abc.com'
+
+- stage: Apply
+  displayName: Apply 
+  condition: and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), ${{ parameters.apply }})
+  dependsOn: Approval
+  jobs:
+  - job: Apply
+    displayName: Apply
+    steps: 
+    - task: TerraformTask@5
+      displayName: Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+        backendServiceArm: 'shivesh-svc'
+        backendAzureRmStorageAccountName: '1devopsinsidersstorage1'
+        backendAzureRmContainerName: 'tfstate'
+        backendAzureRmKey: 'sumant.tfstate'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+        environmentServiceNameAzureRM: 'shivesh-svc'

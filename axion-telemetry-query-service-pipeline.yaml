@@ -1,0 +1,18 @@
+pool: shivesh_agent
+
+trigger:
+- develop
+
+stages:
+  - stage: BuildImage
+    displayName: Build
+    jobs:
+      - job: dockerBuild
+        displayName: Docker Build
+        steps:
+        - task: Docker@2
+          inputs:
+            containerRegistry: 'ACR'
+            repository: 'axion-telemetry-query-service'
+            command: 'buildAndPush'
+            Dockerfile: '**/Dockerfile'

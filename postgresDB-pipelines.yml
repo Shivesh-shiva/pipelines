@@ -1,0 +1,32 @@
+pool: shivesh_agent
+
+stages:
+- stage: DatabaseScriptDeploy
+  jobs:
+    - job: DBdeploy
+      steps:
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            $env:PGPASSWORD = "P@ssw01rd@123"
+            
+            Get-ChildItem "$(Build.SourcesDirectory)\*.sql" | Sort-Object Name | ForEach-Object {
+                Write-Host "Executing $($_.Name)..."
+            
+                psql `
+                  -h "axion-db-server.postgres.database.azure.com" `
+                  -p 5432 `
+                  -U "devopsadmin" `
+                  -d "axiondb" `
+                  -f $_.FullName
+            
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "FAILED: $($_.Name)" -ForegroundColor Red
+                    exit $LASTEXITCODE
+                }
+            
+                Write-Host "SUCCESS: $($_.Name)" -ForegroundColor Green
+            }
+            
+            Remove-Item Env:\PGPASSWORD

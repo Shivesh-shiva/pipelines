@@ -1,0 +1,56 @@
+trigger: none
+
+pool: shivesh_agent
+
+stages:
+- stage: build_stage
+  jobs:
+  - job: Build_job
+    steps:
+    - task: NodeTaskRunnerInstaller@0
+      inputs:
+        nodeVersion: '6'
+
+    - task: Npm@1
+      inputs:
+        command: 'install'
+        workingDir: '$(Build.SourcesDirectory)'
+
+    - task: Npm@1
+      inputs:
+        command: 'custom'
+        workingDir: '$(Build.SourcesDirectory)'
+        customCommand: 'run build'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.SourcesDirectory)/build'
+        ArtifactName: 'FrontendApp'
+        publishLocation: 'Container'
+
+- stage: Deploy_stage
+  jobs:
+  - job: Deploy_Job
+    steps:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        buildType: 'current'
+        artifactName: 'Frontendapp'
+        targetPath: '$(Build.SourcesDirectory)/final_build'
+
+    - task: CopyFilesOverSSH@0
+      inputs:
+        sshEndpoint: 'frontend_vm_SC'
+        sourceFolder: '$(Build.SourcesDirectory)/final_build'
+        contents: '**'
+        targetFolder: '/tmp/final_build'
+        readyTimeout: '20000'
+
+    - task: SSH@0
+      inputs:
+        sshEndpoint: 'frontend_vm_SC'
+        runOptions: 'commands'
+        commands: |
+          sudo cp /tmp/final_build/* /var/www/html -r
+          sudo systemctl restart nginx
+        readyTimeout: '20000'
